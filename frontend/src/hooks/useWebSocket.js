@@ -21,7 +21,10 @@ export function useWebSocket() {
 
     // Connect to real Go WebSocket server
     const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
-    const wsUrl = `ws://${baseUrl.replace('http://', '').replace('https://', '')}/ws?token=${token}&lang=en`
+    // Use secure WebSocket (wss) when backend is https
+    const proto = baseUrl.startsWith('https') ? 'wss' : 'ws'
+    const host = baseUrl.replace('http://', '').replace('https://', '')
+    const wsUrl = `${proto}://${host}/ws?token=${token}&lang=en`
     
     try {
       setConnectionStatus('connecting')
