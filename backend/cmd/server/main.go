@@ -33,10 +33,12 @@ func main() {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 			
-			// Check if origin is allowed
+			// Check if origin is allowed (normalize by trimming spaces and trailing slash)
 			allowed := false
+			originClean := strings.TrimSuffix(strings.TrimSpace(origin), "/")
 			for _, allowedOrigin := range config.C.AllowedOrigins {
-				if strings.TrimSpace(allowedOrigin) == origin {
+				allowedClean := strings.TrimSuffix(strings.TrimSpace(allowedOrigin), "/")
+				if allowedClean == "*" || allowedClean == originClean {
 					allowed = true
 					break
 				}
