@@ -4,24 +4,22 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type AppConfig struct {
-	MongoURI       string
-	MongoDB        string
-	AccessSecret   string
-	RefreshSecret  string
-	EmailHost      string
-	EmailPort      int
-	EmailUser      string
-	EmailPass      string
-	ClientURL      string
-	BaseURL        string
-	Port           string
-	AllowedOrigins []string
+	MongoURI      string
+	MongoDB       string
+	AccessSecret  string
+	RefreshSecret string
+	EmailHost     string
+	EmailPort     int
+	EmailUser     string
+	EmailPass     string
+	ClientURL     string
+	BaseURL       string
+	Port          string
 }
 
 var C AppConfig
@@ -46,13 +44,7 @@ func Load() {
 		ClientURL:     os.Getenv("CLIENT_URL"),
 		BaseURL:       baseURL,
 		Port:          os.Getenv("PORT"),
-		AllowedOrigins: func() []string {
-			origins := os.Getenv("ALLOWED_ORIGINS")
-			if origins == "" {
-				return []string{"http://localhost:5173"} // Default for development
-			}
-			return strings.Split(origins, ",")
-		}(),
+		// no sendgrid key
 	}
 
 	if C.MongoURI == "" {

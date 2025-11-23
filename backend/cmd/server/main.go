@@ -32,24 +32,24 @@ func main() {
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			
-			// Check if origin is allowed (normalize by trimming spaces and trailing slash)
-			allowed := false
-			originClean := strings.TrimSuffix(strings.TrimSpace(origin), "/")
-			for _, allowedOrigin := range config.C.AllowedOrigins {
-				allowedClean := strings.TrimSuffix(strings.TrimSpace(allowedOrigin), "/")
-				if allowedClean == "*" || allowedClean == originClean {
-					allowed = true
-					break
-				}
+
+			// Use single client URL from config.C.ClientURL for CORS
+			clientURL := strings.TrimSuffix(strings.TrimSpace(config.C.ClientURL), "/")
+			if clientURL == "" {
+				clientURL = "http://localhost:5173"
 			}
-			
-			if allowed {
+			originClean := strings.TrimSuffix(strings.TrimSpace(origin), "/")
+
+			switch clientURL {
+			case "*":
+				// Allow any origin (no credentials when wildcard)
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			case originClean:
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)

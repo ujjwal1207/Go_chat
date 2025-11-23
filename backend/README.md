@@ -86,6 +86,12 @@ EMAIL_PASS=your-app-password
 # Server Configuration
 PORT=5000
 BASE_URL=http://localhost:5000
+# Frontend origin used for CORS
+# Example: CLIENT_URL=http://localhost:5173
+# In production set to your deployed frontend URL without trailing slash
+# CLIENT_URL=https://your-frontend-domain.com
+
+ 
 ```
 
 ## Running the Backend
