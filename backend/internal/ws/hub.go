@@ -5,6 +5,13 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
+
+	"realtime-chat/internal/db"
+	"realtime-chat/internal/models"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Group struct {
@@ -54,11 +61,15 @@ func (h *Hub) GetClient(userID string) (*Client, bool) {
 }
 
 // send DM with translation hook
-func (h *Hub) SendDM(fromID, toID, conversationID, text, fromLang string, files []string) {
+func (h *Hub) SendDM(fromID, toID, conversationID, text, fromLang string, files []string, replyTo, replyText, replySender string) {
 	log.Printf("💬 Processing DM from %s to %s in conversation %s: %s (lang: %s)", fromID, toID, conversationID, text, fromLang)
 
+	// resolve reply sender to a display name if it's an object id
+	resolvedReplySender := resolveUserDisplayName(replySender)
+
 	// persist original message language
-	err := saveDM(context.Background(), fromID, conversationID, text, fromLang, files)
+	// saveDM expects recipientID for DMs
+	err := saveDM(context.Background(), fromID, toID, text, fromLang, files, replyTo, replyText, resolvedReplySender)
 	if err != nil {
 		log.Printf("❌ Failed to save DM: %v", err)
 	} else {
@@ -75,12 +86,15 @@ func (h *Hub) SendDM(fromID, toID, conversationID, text, fromLang string, files 
 	log.Printf("🌐 Translated message: %s -> %s", text, translated)
 
 	out := OutgoingMessage{
-		Type:     "message",
-		ChatType: "dm",
-		FromUser: fromID,
-		Text:     translated,
-		Files:    files,
-		Lang:     receiver.preferredLang,
+		Type:        "message",
+		ChatType:    "dm",
+		FromUser:    fromID,
+		Text:        translated,
+		ReplyTo:     replyTo,
+		ReplyText:   replyText,
+		ReplySender: resolvedReplySender,
+		Files:       files,
+		Lang:        receiver.preferredLang,
 	}
 
 	b, _ := json.Marshal(out)
@@ -114,9 +128,12 @@ func (h *Hub) AddMemberToGroup(groupID, userID string) {
 }
 
 // broadcast to group
-func (h *Hub) SendToGroup(fromID, groupID, text, fromLang string, files []string) {
+func (h *Hub) SendToGroup(fromID, groupID, text, fromLang string, files []string, replyTo, replyText, replySender string) {
+	// resolve reply sender to display name
+	resolvedReplySender := resolveUserDisplayName(replySender)
+
 	// persist once
-	_ = saveGroupMsg(context.Background(), fromID, groupID, text, fromLang, files)
+	_ = saveGroupMsg(context.Background(), fromID, groupID, text, fromLang, files, replyTo, replyText, resolvedReplySender)
 
 	h.mu.RLock()
 	g, ok := h.groups[groupID]
@@ -137,13 +154,16 @@ func (h *Hub) SendToGroup(fromID, groupID, text, fromLang string, files []string
 		translated := translate(text, fromLang, receiver.preferredLang)
 
 		out := OutgoingMessage{
-			Type:     "message",
-			ChatType: "group",
-			FromUser: fromID,
-			GroupID:  groupID,
-			Text:     translated,
-			Lang:     receiver.preferredLang,
-			Files:    files,
+			Type:        "message",
+			ChatType:    "group",
+			FromUser:    fromID,
+			GroupID:     groupID,
+			Text:        translated,
+			ReplyTo:     replyTo,
+			ReplyText:   replyText,
+			ReplySender: resolvedReplySender,
+			Lang:        receiver.preferredLang,
+			Files:       files,
 		}
 		b, _ := json.Marshal(out)
 		receiver.send <- b
@@ -194,4 +214,69 @@ func (h *Hub) loadGroupsFromDB() error {
 
 	log.Printf("✅ Loaded %d groups from database", len(groups))
 	return nil
+}
+
+// deliver undelivered DMs to a connected client
+func (h *Hub) deliverUndelivered(client *Client) error {
+	msgs, err := fetchUndeliveredDMs(context.Background(), client.userID)
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	var ids []interface{}
+	for _, m := range msgs {
+		// translate content to client's preferred language
+		translated := translate(m.Content, m.ContentLang, client.preferredLang)
+		// resolve reply sender name for presentation
+		resolvedReplySender := resolveUserDisplayName(m.ReplySender)
+
+		out := OutgoingMessage{
+			Type:        "message",
+			ChatType:    "dm",
+			FromUser:    m.SenderID,
+			Text:        translated,
+			ReplyTo:     m.ReplyTo,
+			ReplyText:   m.ReplyText,
+			ReplySender: resolvedReplySender,
+			Files:       m.Files,
+			Lang:        client.preferredLang,
+		}
+		b, _ := json.Marshal(out)
+		client.send <- b
+		ids = append(ids, m.ID)
+	}
+
+	// mark delivered
+	if err := markMessagesDelivered(context.Background(), ids); err != nil {
+		log.Printf("⚠️ failed to mark messages delivered for user %s: %v", client.userID, err)
+	}
+	return nil
+}
+
+// resolveUserDisplayName attempts to convert a user identifier (possibly an ObjectID hex)
+// into a human-friendly display name. If lookup fails, returns the original identifier.
+func resolveUserDisplayName(identifier string) string {
+	if identifier == "" {
+		return ""
+	}
+	// If identifier looks like an ObjectID, try to resolve
+	if oid, err := primitive.ObjectIDFromHex(identifier); err == nil {
+		var u models.User
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if err := db.Users().FindOne(ctx, bson.M{"_id": oid}).Decode(&u); err == nil {
+			if u.DisplayName != "" {
+				return u.DisplayName
+			}
+			if u.Name != "" {
+				return u.Name
+			}
+			return u.ID
+		}
+	}
+	// Not an ObjectID or lookup failed — assume it's already a name
+	return identifier
 }

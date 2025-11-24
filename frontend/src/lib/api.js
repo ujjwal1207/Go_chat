@@ -178,13 +178,18 @@ class APIService {
         .map(msg => ({
           id: msg._id,
           senderId: msg.sender_id,
-          senderName: msg.sender_id, // TODO: Get actual user name
+          // prefer server-provided sender_name or display_name when available
+          senderName: msg.sender_name || msg.sender_display_name || msg.sender_id,
           content: msg.content,
           timestamp: new Date(msg.created_at),
-          type: 'text',
+          type: (msg.files && msg.files.some(f => /\.(mp3|wav|webm|ogg|m4a)$/i.test(f))) ? 'voice' : 'text',
           isRead: false,
           files: msg.files || [],
-          contentLang: msg.content_lang
+          contentLang: msg.content_lang,
+          // reply metadata (server may return resolved display names)
+          replyTo: msg.reply_to || null,
+          replyText: msg.reply_text || null,
+          replySender: msg.reply_sender || null,
         }))
       // Reverse to show oldest first
       return transformedMessages.reverse()
@@ -214,9 +219,9 @@ class APIService {
   // Get user's conversations
   async getConversations() {
     try {
-      console.log('📞 Fetching conversations from API...')
+      console.debug('Fetching conversations from API...')
       const conversations = await this.request('/conversations')
-      console.log('✅ Loaded conversations:', conversations)
+      console.debug('Loaded conversations count:', conversations && conversations.length)
       return conversations
     } catch (error) {
       console.warn('❌ API conversations not available:', error)
@@ -239,13 +244,16 @@ class APIService {
         .map(msg => ({
           id: msg._id,
           senderId: msg.sender_id,
-          senderName: msg.sender_id, // TODO: Get actual user name
+          senderName: msg.sender_name || msg.sender_display_name || msg.sender_id,
           content: msg.content,
           timestamp: new Date(msg.created_at),
-          type: 'text',
+          type: (msg.files && msg.files.some(f => /\.(mp3|wav|webm|ogg|m4a)$/i.test(f))) ? 'voice' : 'text',
           isRead: false,
           files: msg.files || [],
-          contentLang: msg.content_lang
+          contentLang: msg.content_lang,
+          replyTo: msg.reply_to || null,
+          replyText: msg.reply_text || null,
+          replySender: msg.reply_sender || null,
         }))
       // Reverse to show oldest first
       return transformedMessages.reverse()
@@ -269,9 +277,7 @@ class APIService {
   async createDMConversation(userEmail) {
     try {
       const token = this.getToken()
-      console.log('API: Creating DM with token:', !!token)
-      console.log('API: Token preview:', token ? token.substring(0, 20) + '...' : 'null')
-      console.log('API: Target email:', userEmail)
+      console.debug('API: Creating DM request for email:', userEmail)
       return await this.post('/conversations/dm', { userEmail })
     } catch (error) {
       console.warn('Create DM API not available:', error)
@@ -282,9 +288,9 @@ class APIService {
   // Delete a conversation
   async deleteConversation(conversationId) {
     try {
-      console.log('🗑️ Deleting conversation:', conversationId)
+      console.debug('Deleting conversation:', conversationId)
       await this.delete(`/conversations/${conversationId}`)
-      console.log('✅ Conversation deleted successfully')
+      console.debug('Conversation deleted successfully')
     } catch (error) {
       console.warn('❌ Failed to delete conversation:', error)
       throw error

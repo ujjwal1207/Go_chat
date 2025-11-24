@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Send, Smile, Paperclip, Image, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
+import { useAuthStore } from "../store/auth.js";
 
 const EMOJI_LIST = [
   "😀",
@@ -62,11 +63,29 @@ export function MessageInput({
   placeholder = "Type a message...",
   disabled = false,
   onFileSelect,
+  reply,
+  onCancelReply,
 }) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const { user } = useAuthStore();
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordStart, setRecordStart] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
+  const computeReplyLabel = (r) => {
+    if (!r) return 'Unknown'
+    // Prefer explicit sender name
+    if (r.senderName) return r.senderName
+    const raw = r.replySender || ''
+    if (!raw) return 'Unknown'
+    if (user && (raw === user.id || raw === user.displayName)) return 'you'
+    if (/^[0-9a-fA-F]{24}$/.test(raw)) return raw.slice(0, 6) + '...'
+    return raw
+  }
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -78,14 +97,96 @@ export function MessageInput({
   const handleSend = () => {
     if ((!value.trim() && attachedFiles.length === 0) || disabled) return;
 
-    onSend({
+    const payload = {
       text: value.trim(),
-      files: attachedFiles.map(f => f.url),
-    });
+      files: attachedFiles.map((f) => f.url),
+    };
+
+    if (reply) {
+      payload.replyTo = reply.id || reply.messageId || null;
+      payload.replyText = reply.content || reply.text || reply.replyText || "";
+      payload.replySender = reply.senderId || reply.senderName || reply.replySender || "";
+    }
+
+    onSend(payload);
 
     setAttachedFiles([]);
     setShowEmojiPicker(false);
+    if (onCancelReply) onCancelReply();
   };
+
+  // Recording helpers
+  const startRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Recording not supported in this browser')
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : (MediaRecorder.isTypeSupported('audio/ogg') ? 'audio/ogg' : 'audio/mpeg')
+      const mr = new MediaRecorder(stream, { mimeType })
+      audioChunksRef.current = []
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+      mr.onstop = async () => {
+        try {
+          const blob = new Blob(audioChunksRef.current, { type: mr.mimeType || 'audio/webm' })
+          const fileName = `voicenote_${Date.now()}.${blob.type.includes('ogg') ? 'ogg' : (blob.type.includes('mpeg') || blob.type.includes('mp3') ? 'mp3' : 'webm')}`
+          const file = new File([blob], fileName, { type: blob.type })
+
+          // upload
+          const formData = new FormData()
+          formData.append('file', file)
+          const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+          const resp = await fetch(`${baseUrl}/upload`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            },
+            body: formData,
+          })
+          if (!resp.ok) {
+            const text = await resp.text().catch(() => '')
+            console.error('Upload response body:', text)
+            throw new Error('Upload failed: ' + text)
+          }
+          const result = await resp.json()
+
+          // auto-send voice note message
+          onSend({
+            text: '',
+            files: [result.url],
+            type: 'voice'
+          })
+        } catch (error) {
+          console.error('Voice upload failed', error)
+          alert('Failed to upload voice note')
+        }
+      }
+
+      mediaRecorderRef.current = mr
+      mr.start()
+      setIsRecording(true)
+      setRecordStart(Date.now())
+    } catch (err) {
+      console.error('Failed to start recording', err)
+      alert('Could not start audio recording')
+    }
+  }
+
+  const stopRecording = () => {
+    try {
+      mediaRecorderRef.current?.stop()
+      // stop all tracks
+      mediaRecorderRef.current?.stream?.getTracks?.().forEach(t => t.stop && t.stop())
+    } catch (e) {
+      console.warn('Error stopping recorder', e)
+    }
+    setIsRecording(false)
+    setRecordStart(null)
+  }
 
   const handleEmojiClick = (emoji) => {
     const textarea = textareaRef.current;
@@ -225,6 +326,19 @@ export function MessageInput({
       )}
 
       {/* Input Area */}
+      {/* Reply preview */}
+      {reply && (
+        <div className="mx-4 mb-2 p-3 bg-white/5 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700">
+          <div className="flex items-start justify-between">
+            <div className="text-xs text-slate-300">
+              <strong className="mr-2">Replying to {computeReplyLabel(reply)}</strong>
+              <span className="text-xs opacity-80 truncate block">{reply.content || reply.text || reply.replyText}</span>
+            </div>
+            <button onClick={() => onCancelReply && onCancelReply()} className="text-slate-400 hover:text-slate-600 ml-2">✕</button>
+          </div>
+        </div>
+      )}
+
       {/* Main Input */}
       <div className="p-4 bg-white dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-700">
         <div className="flex items-end space-x-3 p-3 bg-white dark:bg-zinc-900/70 backdrop-blur-md rounded-3xl border border-slate-200 dark:border-zinc-700 shadow-sm hover:shadow-md transition-shadow">
@@ -239,6 +353,20 @@ export function MessageInput({
             title="Attach file"
           >
             <Paperclip className="w-5 h-5" />
+          </button>
+
+          {/* Voice record button */}
+          <button
+            onClick={() => { if (isRecording) stopRecording(); else startRecording() }}
+            disabled={disabled}
+            className={cn(
+              "p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 dark:bg-zinc-700 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-indigo-400 rounded-xl transition-all duration-200",
+              disabled && "opacity-50 cursor-not-allowed",
+              isRecording && "ring-2 ring-red-400"
+            )}
+            title={isRecording ? "Stop recording" : "Record voice note"}
+          >
+            <span className={cn("w-4 h-4 rounded-full inline-block", isRecording ? 'bg-red-500' : 'bg-slate-500')} />
           </button>
 
           {/* Emoji Button */}

@@ -38,27 +38,27 @@ export default function UserSearchModal({
       return;
     }
 
-    console.log("🔍 Searching for:", query);
+    console.debug("Searching for:", query);
     setIsLoading(true);
     try {
       // Try real API first, fallback to mock data
       let results = [];
       try {
         results = await apiService.searchUsers(query);
-        console.log("✅ API results:", results);
+        console.debug("API results:", results);
       } catch (error) {
-        console.log("❌ API error, using mock data:", error);
+        console.debug("API error, using mock data:", error);
         // Fallback to mock data for demo
         results = mockUsers.filter(
           (mockUser) =>
             mockUser.email.toLowerCase().includes(query.toLowerCase()) ||
             mockUser.name?.toLowerCase().includes(query.toLowerCase())
         );
-        console.log("📝 Mock results:", results);
+        console.debug("Mock results:", results);
       }
 
-      console.log("👤 Current user:", user?.email);
-      console.log("🚫 Existing users:", existingUsers);
+      console.debug("Current user:", user?.email);
+      console.debug("Existing users:", existingUsers);
 
       // Filter out current user and existing users
       const filteredResults = results.filter(
@@ -67,7 +67,7 @@ export default function UserSearchModal({
           !existingUsers.some((existing) => existing.email === result.email)
       );
 
-      console.log("✨ Final filtered results:", filteredResults);
+      console.debug("Final filtered results:", filteredResults);
       setSearchResults(filteredResults);
     } catch (error) {
       console.error("Error searching users:", error);

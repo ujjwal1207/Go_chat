@@ -15,9 +15,13 @@ type IncomingMessage struct {
 	ConversationID string   `json:"conversation_id,omitempty"` // conversation ID for messages
 	Text           string   `json:"text,omitempty"`            // message body
 	Files          []string `json:"files,omitempty"`           // file URLs
-	Members        []string `json:"members,omitempty"`         // for create_group
-	Name           string   `json:"name,omitempty"`            // for create_group
-	SourceLang     string   `json:"source_lang,omitempty"`
+	// Optional reply metadata when replying to a specific message
+	ReplyTo     string   `json:"reply_to,omitempty"`
+	ReplyText   string   `json:"reply_text,omitempty"`
+	ReplySender string   `json:"reply_sender,omitempty"`
+	Members     []string `json:"members,omitempty"` // for create_group
+	Name        string   `json:"name,omitempty"`    // for create_group
+	SourceLang  string   `json:"source_lang,omitempty"`
 }
 
 type OutgoingMessage struct {
@@ -27,8 +31,12 @@ type OutgoingMessage struct {
 	GroupID  string   `json:"group_id,omitempty"`  // target group
 	Text     string   `json:"text,omitempty"`      // delivered text (possibly translated)
 	Files    []string `json:"files,omitempty"`     // file URLs
-	Lang     string   `json:"lang,omitempty"`      // recipient language
-	Error    string   `json:"error,omitempty"`     // error text (when Type="error")
+	// Reply metadata to show quoted message in client
+	ReplyTo     string `json:"reply_to,omitempty"`
+	ReplyText   string `json:"reply_text,omitempty"`
+	ReplySender string `json:"reply_sender,omitempty"`
+	Lang        string `json:"lang,omitempty"`  // recipient language
+	Error       string `json:"error,omitempty"` // error text (when Type="error")
 }
 
 // route incoming messages from a client
@@ -62,7 +70,7 @@ func handleIncoming(h *Hub, sender *Client, raw []byte) {
 			if srcLang == "" {
 				srcLang = sender.preferredLang
 			}
-			h.SendDM(sender.userID, msg.ToUser, msg.ConversationID, msg.Text, srcLang, msg.Files)
+			h.SendDM(sender.userID, msg.ToUser, msg.ConversationID, msg.Text, srcLang, msg.Files, msg.ReplyTo, msg.ReplyText, msg.ReplySender)
 			return
 		}
 
@@ -75,7 +83,7 @@ func handleIncoming(h *Hub, sender *Client, raw []byte) {
 			if srcLang == "" {
 				srcLang = sender.preferredLang
 			}
-			h.SendToGroup(sender.userID, msg.GroupID, msg.Text, srcLang, msg.Files)
+			h.SendToGroup(sender.userID, msg.GroupID, msg.Text, srcLang, msg.Files, msg.ReplyTo, msg.ReplyText, msg.ReplySender)
 			return
 		}
 

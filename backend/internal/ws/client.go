@@ -43,6 +43,13 @@ func ServeWS(hub *Hub, userID, lang string, w http.ResponseWriter, r *http.Reque
 	hub.AddClient(userID, client)
 	log.Printf("👥 User %s added to hub", userID)
 
+	// Deliver any undelivered DMs for this user
+	go func() {
+		if err := hub.deliverUndelivered(client); err != nil {
+			log.Printf("⚠️ error delivering pending messages to %s: %v", userID, err)
+		}
+	}()
+
 	// start read + write pumps
 	go client.writePump()
 	go client.readPump()

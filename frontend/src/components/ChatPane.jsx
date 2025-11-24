@@ -30,6 +30,7 @@ export function ChatPane() {
   const { activeConversationId, conversations, messages, addMessage, removeConversation } =
     useChatStore();
   const [messageText, setMessageText] = useState("");
+  const [replyToMessage, setReplyToMessage] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const messagesEndRef = useRef(null);
@@ -93,12 +94,17 @@ export function ChatPane() {
       text: messageData.text,
       type: messageData.files && messageData.files.length > 0 ? "file" : "text",
       files: messageData.files || [],
+      // include reply metadata if present
+      replyTo: messageData.replyTo,
+      replyText: messageData.replyText,
+      replySender: messageData.replySender,
     };
 
     // Send via WebSocket
     const success = sendMessage(conversation.id, message);
     if (success) {
       setMessageText("");
+      setReplyToMessage(null);
     }
   };
 
@@ -296,13 +302,16 @@ export function ChatPane() {
               conversationMessages[index - 1].senderId !== message.senderId);
 
           return (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              isOwn={isOwnMessage}
-              showAvatar={showAvatar}
-            />
-          );
+              <MessageBubble
+                key={message.id}
+                message={message}
+                isOwn={isOwnMessage}
+                showAvatar={showAvatar}
+                onReply={(msg) => setReplyToMessage(msg)}
+                conversationName={conversation.name}
+                conversationType={conversation.type}
+              />
+            );
         })}
 
         {/* Typing indicator */}
@@ -339,6 +348,8 @@ export function ChatPane() {
         onSend={handleSendMessage}
         placeholder={`Message ${conversation.name}...`}
         disabled={connectionStatus !== "connected"}
+        reply={replyToMessage}
+        onCancelReply={() => setReplyToMessage(null)}
       />
     </div>
   );

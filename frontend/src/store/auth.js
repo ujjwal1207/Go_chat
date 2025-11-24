@@ -18,11 +18,11 @@ export const useAuthStore = create(
         const token = localStorage.getItem('access_token')
         const userId = localStorage.getItem('user_id')
         
-        console.log('Auth init - token:', !!token, 'userId:', userId)
+        console.debug('Auth init - token present:', !!token, 'userId:', userId)
         
         if (!token || !userId) {
           // No stored credentials - ensure clean state
-          console.log('No stored credentials found - clearing auth state')
+          console.debug('No stored credentials found - clearing auth state')
           get().logout()
           return
         }
@@ -31,7 +31,7 @@ export const useAuthStore = create(
           apiService.setAuthToken(token)
           const userDetails = await apiService.getMe()
           
-          console.log('User details from /me endpoint:', userDetails)
+          console.debug('User details from /me endpoint:', userDetails)
           
           const user = {
             id: userId,
@@ -43,7 +43,7 @@ export const useAuthStore = create(
             isVerified: userDetails.is_verified
           }
           
-          console.log('Setting user in store:', user)
+          console.debug('Setting user in store:', user)
           
           set({ 
             isAuthenticated: true, 
@@ -55,7 +55,7 @@ export const useAuthStore = create(
           
           // If authentication fails (401, expired tokens, etc.), clear everything
           if (error.status === 401) {
-            console.log('Invalid/expired tokens detected - forcing logout')
+            console.debug('Invalid/expired tokens detected - forcing logout')
             get().logout()
             return
           }
@@ -63,7 +63,7 @@ export const useAuthStore = create(
           // For non-auth errors, try fallback but be more cautious
           const storedEmail = localStorage.getItem('user_email')
           if (storedEmail && error.status !== 401) {
-            console.log('Network error - using fallback user data from localStorage')
+            console.debug('Network error - using fallback user data from localStorage')
             const user = {
               id: userId,
               email: storedEmail,
@@ -78,7 +78,7 @@ export const useAuthStore = create(
             })
           } else {
             // Clear everything for safety
-            console.log('No fallback possible - clearing auth state')
+            console.debug('No fallback possible - clearing auth state')
             get().logout()
           }
         }
@@ -138,17 +138,17 @@ export const useAuthStore = create(
       },
 
       updateProfile: async (updates) => {
-        console.log('Updating user profile with:', updates)
+        console.debug('Updating user profile with:', updates)
         
         try {
           // Update the backend first
           const response = await apiService.updateMe(updates)
-          console.log('Profile updated on backend:', response)
+          console.debug('Profile updated on backend:', response)
           
           // Then update local state
           set(state => {
             const updatedUser = state.user ? { ...state.user, ...updates } : null
-            console.log('Updated user object:', updatedUser)
+            console.debug('Updated user object:', updatedUser)
             return { user: updatedUser }
           })
         } catch (error) {
@@ -188,12 +188,12 @@ export const useAuthStore = create(
           // Ignore if chat store not available
         }
         
-        console.log('Logged out - all tokens and data cleared')
+        console.debug('Logged out - all tokens and data cleared')
       },
 
       // Force logout to get fresh tokens
       forceLogout: () => {
-        console.log('🔄 Force logout - clearing all data to get fresh tokens')
+        console.debug('🔄 Force logout - clearing all data to get fresh tokens')
         localStorage.clear()
         sessionStorage.clear()
         apiService.logout()

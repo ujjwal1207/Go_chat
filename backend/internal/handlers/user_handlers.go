@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -412,19 +413,35 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Validate file type
+	// Validate file type. Use the parsed media type so values like
+	// "audio/webm; codecs=opus" are handled correctly.
 	allowedTypes := map[string]bool{
 		"image/jpeg": true,
 		"image/png":  true,
 		"image/gif":  true,
 		"image/webp": true,
 		"video/mp4":  true,
+		// common audio types from browsers
+		"audio/mpeg": true,
 		"audio/mp3":  true,
 		"audio/wav":  true,
+		"audio/webm": true,
+		"audio/ogg":  true,
 	}
 
-	if !allowedTypes[header.Header.Get("Content-Type")] {
-		http.Error(w, `{"error": "unsupported file type"}`, http.StatusBadRequest)
+	// header may include codecs (e.g. "audio/webm; codecs=opus")
+	contentTypeHeader := header.Header.Get("Content-Type")
+	mediaType := contentTypeHeader
+	if mt, _, err := mime.ParseMediaType(contentTypeHeader); err == nil {
+		mediaType = mt
+	}
+
+	if !allowedTypes[mediaType] {
+		// Log details to help debug browser upload Content-Type variations
+		log.Printf("Upload rejected - user=%s content=%s mediaType=%s filename=%s", userID, contentTypeHeader, mediaType, header.Filename)
+		// Return helpful message including detected media type for debugging
+		msg := fmt.Sprintf("unsupported file type: %s", contentTypeHeader)
+		http.Error(w, fmt.Sprintf(`{"error": "%s"}`, msg), http.StatusBadRequest)
 		return
 	}
 

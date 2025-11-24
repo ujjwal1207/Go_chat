@@ -1,9 +1,11 @@
 package messages
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"realtime-chat/internal/auth"
 	"realtime-chat/internal/db"
@@ -75,6 +77,27 @@ func GetDMHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve reply_sender ObjectIDs to display names for readability
+	for i := range out {
+		if v, ok := out[i]["reply_sender"].(string); ok && v != "" {
+			if oid, err := primitive.ObjectIDFromHex(v); err == nil {
+				var u struct {
+					DisplayName string `bson:"display_name"`
+					Name        string `bson:"name"`
+					ID          string `bson:"_id"`
+				}
+				ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+				_ = db.Users().FindOne(ctx, bson.M{"_id": oid}).Decode(&u)
+				cancel()
+				if u.DisplayName != "" {
+					out[i]["reply_sender"] = u.DisplayName
+				} else if u.Name != "" {
+					out[i]["reply_sender"] = u.Name
+				}
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	if out == nil {
 		out = []bson.M{}
@@ -116,6 +139,27 @@ func GetGroupHistory(w http.ResponseWriter, r *http.Request) {
 	if err := cur.All(r.Context(), &out); err != nil {
 		http.Error(w, "decode error", http.StatusInternalServerError)
 		return
+	}
+
+	// Resolve reply_sender ObjectIDs to display names for readability
+	for i := range out {
+		if v, ok := out[i]["reply_sender"].(string); ok && v != "" {
+			if oid, err := primitive.ObjectIDFromHex(v); err == nil {
+				var u struct {
+					DisplayName string `bson:"display_name"`
+					Name        string `bson:"name"`
+					ID          string `bson:"_id"`
+				}
+				ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+				_ = db.Users().FindOne(ctx, bson.M{"_id": oid}).Decode(&u)
+				cancel()
+				if u.DisplayName != "" {
+					out[i]["reply_sender"] = u.DisplayName
+				} else if u.Name != "" {
+					out[i]["reply_sender"] = u.Name
+				}
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

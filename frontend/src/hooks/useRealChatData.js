@@ -27,7 +27,7 @@ export function useRealChatData() {
         let apiConversations = []
         try {
           apiConversations = await apiService.getConversations()
-          console.log('📞 Fetching conversations from API...')
+          console.debug('Fetching conversations from API...')
         } catch (apiError) {
           console.warn('API not available, using existing conversations:', apiError)
           // Keep existing conversations if API fails
@@ -37,11 +37,11 @@ export function useRealChatData() {
 
         // Handle loaded conversations
         if (apiConversations.length > 0) {
-          console.log('📋 Loading conversations from API:', apiConversations.length)
+          console.debug('Loading conversations from API:', apiConversations.length)
           setConversations(apiConversations)
         } else if (conversations.length === 0) {
           // Only show welcome bot if no conversations exist at all
-          console.log('🤖 Creating welcome conversation')
+          console.debug('Creating welcome conversation')
           const welcomeConversation = [
             {
               id: '1',

@@ -32,7 +32,7 @@ export function useWebSocket() {
       const ws = new WebSocket(wsUrl)
       
       ws.onopen = () => {
-        console.log('WebSocket connected')
+        console.debug('WebSocket connected')
         setConnectionStatus('connected')
         reconnectAttemptsRef.current = 0
         wsRef.current = ws
@@ -48,7 +48,7 @@ export function useWebSocket() {
       }
       
       ws.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason)
+        console.debug('WebSocket closed:', event.code, event.reason)
         wsRef.current = null
         
         // Check for authentication-related failures
@@ -84,7 +84,7 @@ export function useWebSocket() {
   }
 
   const handleIncomingMessage = async (message) => {
-    console.log('Received WebSocket message:', message)
+    console.debug('Received WebSocket message:', message)
     
     switch (message.type) {
       case 'message':
@@ -93,10 +93,16 @@ export function useWebSocket() {
           id: Date.now().toString() + Math.random(),
           content: message.text,
           senderId: message.from_user,
-          senderName: message.from_user, // TODO: Get actual name
-          timestamp: new Date().toISOString(),
-          type: 'text',
+          senderName: message.sender_name || message.sender_display_name || message.from_user,
+          timestamp: message.created_at || new Date().toISOString(),
+          type: (message.files && message.files.some(f => /\.(mp3|wav|webm|ogg|m4a)$/i.test(f))) ? 'voice' : 'text',
           files: message.files || []
+        }
+        // Attach reply metadata if present
+        if (message.reply_to) {
+          chatMessage.replyTo = message.reply_to
+          chatMessage.replyText = message.reply_text
+          chatMessage.replySender = message.reply_sender
         }
         
         // Determine conversation ID based on chat type
@@ -110,15 +116,15 @@ export function useWebSocket() {
             conv.participants.includes(message.from_user)
           )
           conversationId = dmConversation?.id
-          console.log('🔍 Looking for DM conversation with:', message.from_user)
-          console.log('📋 Available conversations:', conversations.map(c => ({id: c.id, type: c.type, participants: c.participants})))
-          console.log('✅ Found DM conversation:', conversationId)
+          console.debug('Looking for DM conversation with:', message.from_user)
+          console.debug('Available conversations:', conversations.map(c => ({id: c.id, type: c.type, participants: c.participants})))
+          console.debug('Found DM conversation:', conversationId)
         } else if (message.chat_type === 'group') {
           conversationId = message.group_id
         }
         
         if (conversationId) {
-          console.log('📨 Adding message to conversation:', conversationId)
+          console.debug('Adding message to conversation:', conversationId)
           addMessage(conversationId, chatMessage)
         } else {
           console.warn('❌ No conversation found for message:', message)
@@ -127,12 +133,12 @@ export function useWebSocket() {
         
       case 'group_created':
         // Handle group creation notification
-        console.log('Group created:', message)
+          console.debug('Group created:', message)
         // Refetch conversations to include the new group
         try {
           const updatedConversations = await apiService.getConversations()
           useChatStore.getState().setConversations(updatedConversations)
-          console.log('✅ Refetched conversations after group creation:', updatedConversations.length)
+          console.debug('Refetched conversations after group creation:', updatedConversations.length)
         } catch (error) {
           console.error('❌ Failed to refetch conversations after group creation:', error)
         }
@@ -140,7 +146,7 @@ export function useWebSocket() {
         
       case 'joined_group':
         // Handle group join notification
-        console.log('Joined group:', message)
+        console.debug('Joined group:', message)
         break
         
       case 'error':
@@ -148,7 +154,7 @@ export function useWebSocket() {
         break
         
       default:
-        console.log('Unknown message type:', message.type)
+        console.debug('Unknown message type:', message.type)
     }
   }
 
@@ -166,13 +172,13 @@ export function useWebSocket() {
   const scheduleReconnect = () => {
     // Don't reconnect if user is no longer authenticated
     if (!isAuthenticated || !user) {
-      console.log('User no longer authenticated - stopping reconnection')
+      console.debug('User no longer authenticated - stopping reconnection')
       setConnectionStatus('disconnected')
       return
     }
     
     if (reconnectAttemptsRef.current >= 5) {
-      console.log('Max reconnection attempts reached')
+      console.debug('Max reconnection attempts reached')
       setConnectionStatus('failed')
       return
     }
@@ -180,7 +186,7 @@ export function useWebSocket() {
     const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000)
     reconnectAttemptsRef.current += 1
     
-    console.log(`Scheduling WebSocket reconnection attempt ${reconnectAttemptsRef.current} in ${delay}ms`)
+    console.debug(`Scheduling WebSocket reconnection attempt ${reconnectAttemptsRef.current} in ${delay}ms`)
     setConnectionStatus('reconnecting')
     reconnectTimeoutRef.current = setTimeout(connect, delay)
   }
@@ -210,7 +216,7 @@ export function useWebSocket() {
         return false
       }
       
-      console.log('📤 Sending DM to user:', otherUserId, 'in conversation:', conversationId)
+      console.debug('Sending DM to user:', otherUserId, 'in conversation:', conversationId)
       
       wsMessage = {
         type: 'send_message',
@@ -219,6 +225,11 @@ export function useWebSocket() {
         conversation_id: conversationId, // Add conversation ID for consistency
         text: message.text,
         source_lang: 'en'
+      }
+      if (message.replyTo) {
+        wsMessage.reply_to = message.replyTo
+        wsMessage.reply_text = message.replyText
+        wsMessage.reply_sender = message.replySender
       }
       if (message.files && message.files.length > 0) {
         wsMessage.files = message.files
@@ -231,6 +242,11 @@ export function useWebSocket() {
         conversation_id: conversationId, // Add for consistency
         text: message.text,
         source_lang: 'en'
+      }
+      if (message.replyTo) {
+        wsMessage.reply_to = message.replyTo
+        wsMessage.reply_text = message.replyText
+        wsMessage.reply_sender = message.replySender
       }
       if (message.files && message.files.length > 0) {
         wsMessage.files = message.files
@@ -255,7 +271,7 @@ export function useWebSocket() {
     // Send to server
     try {
       wsRef.current.send(JSON.stringify(wsMessage))
-      console.log('Sent WebSocket message:', wsMessage)
+      console.debug('Sent WebSocket message:', wsMessage)
       return true
     } catch (error) {
       console.error('Failed to send WebSocket message:', error)
@@ -267,7 +283,7 @@ export function useWebSocket() {
     if (connectionStatus !== 'connected' || !wsRef.current) return
 
     // TODO: Implement typing indicators in backend
-    console.log(`Typing indicator: ${isTyping ? 'start' : 'stop'} typing in ${conversationId}`)
+    console.debug(`Typing indicator: ${isTyping ? 'start' : 'stop'} typing in ${conversationId}`)
   }
 
   const createGroup = (name, members) => {
@@ -284,7 +300,7 @@ export function useWebSocket() {
 
     try {
       wsRef.current.send(JSON.stringify(wsMessage))
-      console.log('Sent group creation request:', wsMessage)
+      console.debug('Sent group creation request:', wsMessage)
       return true
     } catch (error) {
       console.error('Failed to create group:', error)
@@ -298,13 +314,13 @@ export function useWebSocket() {
       // Only connect if we're not already connected/connecting
       const currentState = wsRef.current?.readyState
       if (!wsRef.current || currentState === WebSocket.CLOSED || currentState === WebSocket.CLOSING) {
-        console.log('Initiating WebSocket connection for user:', user.email)
+        console.debug('Initiating WebSocket connection for user:', user.email)
         connect()
       } else {
-        console.log('WebSocket already connected/connecting, skipping')
+        console.debug('WebSocket already connected/connecting, skipping')
       }
     } else {
-      console.log('WebSocket disconnect - auth state:', { isAuthenticated, hasUser: !!user, hasToken: !!token })
+      console.debug('WebSocket disconnect - auth state:', { isAuthenticated, hasUser: !!user, hasToken: !!token })
       disconnect()
     }
 

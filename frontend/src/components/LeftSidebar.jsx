@@ -62,9 +62,9 @@ export function LeftSidebar({ onClose, onNewGroup }) {
       return;
     }
 
-    console.log("Creating DM conversation with:", selectedUser.email);
-    console.log("Current user:", user);
-    console.log(
+    console.debug("Creating DM conversation with:", selectedUser.email);
+    console.debug("Current user:", user);
+    console.debug(
       "Auth token available:",
       !!localStorage.getItem("access_token")
     );
@@ -74,7 +74,7 @@ export function LeftSidebar({ onClose, onNewGroup }) {
       console.warn(
         "User data incomplete, using local fallback for DM creation"
       );
-      console.log("Using fallback with user ID:", user.id);
+      console.debug("Using fallback with user ID:", user.id);
 
       const newConversation = {
         id: `dm-${Date.now()}`,
@@ -99,12 +99,12 @@ export function LeftSidebar({ onClose, onNewGroup }) {
         selectedUser.email
       );
 
-      console.log("API Response conversation:", conversation);
+      console.debug("API Response conversation:", conversation);
 
       // Add to store
       addConversation(conversation);
 
-      console.log(
+      console.debug(
         "Added conversation to store, all conversations:",
         conversations
       );
@@ -112,12 +112,12 @@ export function LeftSidebar({ onClose, onNewGroup }) {
       // Select the new conversation
       setActiveConversation(conversation.id);
 
-      console.log("Set active conversation to:", conversation.id);
+      console.debug("Set active conversation to:", conversation.id);
 
       // Close modal
       setShowUserSearch(false);
 
-      console.log("Created DM conversation with:", selectedUser.email);
+      console.debug("Created DM conversation with:", selectedUser.email);
     } catch (error) {
       console.error("Failed to create DM conversation:", error);
 
